@@ -1,0 +1,121 @@
+---
+title: "PM2.5"
+author: "Fernando Hold Montaguti"
+date: "04/01/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+library(knitr)
+library(dplyr)
+library(ggplot2)
+library(corrplot)
+library(tidyr)
+knitr::opts_chunk$set(echo = FALSE)
+opts_knit$set(root.dir = "C:/Users/fmontaguti/Documents/Air_Quality")
+```
+
+## Análise de Dados
+
+Com a base PM2.5 onde foram observados 420768 registros dentro de 5 anos a respeito de poluentes e particulados no ar dentro de algumas estações da China, além de informações como temperatura, direção do vento, pressão, precipitação de chuva, etc. Foram realizadas algumas análises para entender o comportamento dos dados. 
+
+```{r}
+files = list.files()
+#Cria uma lista com os documentos do diretório
+temp = lapply(files, read.csv)
+#Aplica uma função separado em cada elemento de uma lista
+temp2 = do.call(rbind,temp)
+#Aplica uma função comulativa em elementos de uma lista
+Data = temp2[2:18]
+#Seleciona apenas algumas colunas no dataset
+Data = Data[,c(1,2,3,4,5,6,7,8,9,10,11,12,13,14,16,15,17)]
+```
+
+Primeiramente tomou-se como fator a estação de origem para verificar como que os poluentes estavam alocados geograficamente. A medida de referência foi a mediana para a concentração dos poluentes, uma vez que não possui tanta interferência de medidas extremas.
+
+```{r}
+  Data %>%
+    group_by(station) %>%
+    summarise(
+      PM2.5 = median(PM2.5, na.rm = TRUE),
+      PM10 = median(PM10, na.rm = TRUE),
+      SO2 = median(SO2, na.rm = TRUE),
+      NO2 = median(NO2, na.rm = TRUE),
+      CO = median(CO, na.rm = TRUE),
+      O3 = median(O3, na.rm = TRUE)
+    )
+```
+
+Nota-se que não existe uma distinção muito clara em cada estação, sendo que cada poluente se sobressai em alguns aspectos dentro das estações.
+
+Como existem registros em um grande período de tempo, verificou-se o comportamento dos poluentes ao longo dos anos, sendo retratados novamente pela sua mediana.
+
+```{r}
+A = Data %>%
+    group_by(year) %>%
+    summarise(
+        PM2.5 = median(PM2.5, na.rm = TRUE),
+        PM10 = median(PM10, na.rm = TRUE),
+        NO2 = median(NO2, na.rm = TRUE),
+        O3 = median(O3, na.rm = TRUE)
+      ) 
+
+B = gather(A,Polution, Concentration, PM2.5:O3)
+
+ggplot(B,aes(x=year,y=Concentration,group=Polution,color=Polution))+
+  geom_line(size=0.8)+
+  geom_point(size=2)+
+  labs(title="Median Concentration by Year",x="Year",y="Concentration [ppm]")+
+  theme(legend.position="top")+
+  theme(plot.title = element_text(hjust = 0.5))
+```
+
+Logo após foram analisados as medidas de posição e disperção dos poluentes, sendo apresentados conforme tabela abaixo.
+
+```{r}
+Mean = lapply(Data[5:10], mean, na.rm = TRUE)
+Min = lapply(Data[5:10], quantile, c(0) ,na.rm = TRUE)
+Q1 = lapply(Data[5:10], quantile, c(0.25) ,na.rm = TRUE)
+Q2 = lapply(Data[5:10], quantile, c(0.50) ,na.rm = TRUE)
+Q3 = lapply(Data[5:10], quantile, c(0.75) ,na.rm = TRUE)
+Max = lapply(Data[5:10], quantile, c(1) ,na.rm = TRUE)
+SD = lapply(Data[5:10], sd, na.rm = TRUE)
+VAR = lapply(Data[5:10], var, na.rm = TRUE)
+
+Statistics = rbind(Min,Q1,Q2,Q3,Max,Mean,SD,VAR)
+Statistics
+```
+
+Uma análise de correlaçlão também foi realizada entre os dados registrados, para verificar a influência de uma variável sobre a outra.
+Seu resultado foi apresentado em uma matrix de correlação envolvendo 11 das 17 variáveis do Dataset. 
+
+```{r}
+COR=cor(Data[5:15],use = "complete.obs")
+corrplot.mixed(COR,lower.col = "black", number.cex = .7)
+```
+
+Com o enfoque em PM2.5, nota-se uma correlação forte com as variáveis PM10, SO2, NO2, CO e também com a velocidade do vento [WSPM].
+
+Para se realizar um modelo preditivo de concentração de PM2.5 com base em outras variáveis, utilizou-se as de maior correlação encontrada.
+Envolvendo 5 variáveis de maior correlação, os dados do modelo podem ser observados abaixo.
+
+```{r}
+Linear_model = lm(PM2.5~PM10+SO2+NO2+CO+WSPM,Data)
+summary(Linear_model)
+```
+
+ R² ajustado possui um valor de 0,8429 ajustando grande parte das observações, também apresenta um baixo valor de resíduos. Para auxílio da análise do modelo, plotou-se suas características.
+
+```{r}
+plot(Linear_model)
+```
+
+Como esperado, grande parte dos dados se ajusta com a equação obtida do modelo.
+
+[PM2.5] = 0.5745690[PM10]+0.0187264[SO2]-0.0151640[NO2]+0.0217148[CO]-4.0076853[WSPM]
+
+O intervalo de confiança de cada variável também pode ser obtivo de acordo com tabela apresentada.
+
+```{r}
+confint(Linear_model)
+```
